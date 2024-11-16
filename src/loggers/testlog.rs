@@ -129,6 +129,11 @@ pub fn log(config: &Config, record: &Record<'_>) {
     }
 
     write_args(record);
+
+    #[cfg(feature = "kv")]
+    let _ = record.key_values().visit(&mut KvTestPrinter);
+
+    println!();
 }
 
 #[inline(always)]
@@ -187,5 +192,24 @@ pub fn write_module(record: &Record<'_>) {
 
 #[inline(always)]
 pub fn write_args(record: &Record<'_>) {
-    println!("{}", record.args());
+    print!("{}", record.args());
+}
+
+#[cfg(feature = "kv")]
+struct KvTestPrinter;
+
+#[cfg(feature = "kv")]
+impl<'kv> log::kv::VisitSource<'kv> for KvTestPrinter<'kv>
+where
+    W: Write + Sized,
+{
+    fn visit_pair(
+        &mut self,
+        key: log::kv::Key<'kv>,
+        value: log::kv::Value<'kv>,
+    ) -> Result<(), log::kv::Error> {
+        print!(" {key}={value:?}");
+
+        Ok(())
+    }
 }

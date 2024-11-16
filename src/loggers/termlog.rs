@@ -176,14 +176,19 @@ impl TermLogger {
         }
 
         #[cfg(feature = "paris")]
-        write_args(
-            record,
-            term_lock,
-            self.config.enable_paris_formatting,
-            &self.config.line_ending,
-        )?;
+        write_args(record, term_lock, self.config.enable_paris_formatting)?;
         #[cfg(not(feature = "paris"))]
-        write_args(record, term_lock, &self.config.line_ending)?;
+        write_args(record, term_lock)?;
+
+        #[cfg(feature = "kv")]
+        // it's not possible to convert log::kv::Error into std::io::Error, though it's just inside
+        // can be ignored because error ignored in Log::log() anyway
+        let _ = record.key_values().visit(&mut KvTermPrinter {
+            config: &self.config,
+            write: term_lock,
+        });
+
+        write!(term_lock, "{}", self.config.line_ending)?;
 
         // The log crate holds the logger as a `static mut`, which isn't dropped
         // at program exit: https://doc.rust-lang.org/reference/items/static-items.html
@@ -240,4 +245,61 @@ impl SharedLogger for TermLogger {
     fn as_log(self: Box<Self>) -> Box<dyn Log> {
         Box::new(*self)
     }
+}
+
+#[cfg(feature = "kv")]
+struct KvTermPrinter<'a> {
+    config: &'a Config,
+    write: &'a mut BufferedStandardStream,
+}
+
+#[cfg(feature = "kv")]
+impl<'kvs, 'c> log::kv::VisitSource<'kvs> for KvTermPrinter<'c> {
+    fn visit_pair(
+        &mut self,
+        key: log::kv::Key<'kvs>,
+        value: log::kv::Value<'kvs>,
+    ) -> Result<(), log::kv::Error> {
+        write_term_kv_pair(key, value, self.write, self.config)?;
+
+        Ok(())
+    }
+}
+
+#[inline(always)]
+#[cfg(feature = "kv")]
+fn write_term_kv_pair<'kvs>(
+    key: log::kv::Key<'kvs>,
+    value: log::kv::Value<'kvs>,
+    write: &mut BufferedStandardStream,
+    #[cfg_attr(not(all(feature = "termcolor", feature = "ansi_term")), allow(unused))]
+    config: &Config,
+) -> Result<(), Error> {
+    #[cfg(feature = "ansi_term")]
+    let color = match &config.kv_key_color {
+        Some(termcolor) if config.write_log_enable_colors => termcolor_to_ansiterm(termcolor),
+        _ => None,
+    };
+
+    #[cfg(feature = "ansi_term")]
+    match color {
+        Some(c) => write!(write, " {}={value:?}", c.paint(key.as_str()))?,
+        None => write!(write, " {key}={value:?}")?,
+    };
+
+    #[cfg(not(feature = "ansi_term"))]
+    {
+        use termcolor::{ColorSpec, WriteColor};
+
+        if !config.write_log_enable_colors {
+            write.set_color(ColorSpec::new().set_fg(config.kv_key_color))?;
+        }
+        write!(write, " {key}")?;
+        if !config.write_log_enable_colors {
+            write.reset()?;
+        }
+        write!(write, "={value:?}")?;
+    }
+
+    Ok(())
 }

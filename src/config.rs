@@ -106,6 +106,8 @@ pub struct Config {
     pub(crate) filter_ignore: Cow<'static, [Cow<'static, str>]>,
     #[cfg(feature = "termcolor")]
     pub(crate) level_color: [Option<Color>; 6],
+    #[cfg(all(feature = "termcolor", feature = "kv"))]
+    pub(crate) kv_key_color: Option<Color>,
     pub(crate) write_log_enable_colors: bool,
     #[cfg(feature = "paris")]
     pub(crate) enable_paris_formatting: bool,
@@ -401,6 +403,8 @@ impl Default for Config {
                 Some(Color::Cyan),   // Debug
                 Some(Color::White),  // Trace
             ],
+            #[cfg(all(feature = "termcolor", feature = "kv"))]
+            kv_key_color: Some(Color::Yellow),
 
             #[cfg(feature = "paris")]
             enable_paris_formatting: true,

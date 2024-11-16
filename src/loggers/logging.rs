@@ -62,14 +62,16 @@ where
     }
 
     #[cfg(feature = "paris")]
-    return write_args(
-        record,
-        write,
-        config.enable_paris_formatting,
-        &config.line_ending,
-    );
+    write_args(record, write, config.enable_paris_formatting)?;
     #[cfg(not(feature = "paris"))]
-    return write_args(record, write, &config.line_ending);
+    write_args(record, write)?;
+
+    #[cfg(feature = "kv")]
+    let _ = record.key_values().visit(&mut KvPrinter { write });
+
+    write!(write, "{}", config.line_ending)?;
+
+    Ok(())
 }
 
 #[inline(always)]
@@ -232,34 +234,28 @@ where
 
 #[inline(always)]
 #[cfg(feature = "paris")]
-pub fn write_args<W>(
-    record: &Record<'_>,
-    write: &mut W,
-    with_colors: bool,
-    line_ending: &str,
-) -> Result<(), Error>
+pub fn write_args<W>(record: &Record<'_>, write: &mut W, with_colors: bool) -> Result<(), Error>
 where
     W: Write + Sized,
 {
     write!(
         write,
-        "{}{}",
+        "{}",
         crate::__private::paris::formatter::format_string(
             format!("{}", record.args()),
             with_colors
-        ),
-        line_ending
+        )
     )?;
     Ok(())
 }
 
 #[inline(always)]
 #[cfg(not(feature = "paris"))]
-pub fn write_args<W>(record: &Record<'_>, write: &mut W, line_ending: &str) -> Result<(), Error>
+pub fn write_args<W>(record: &Record<'_>, write: &mut W) -> Result<(), Error>
 where
     W: Write + Sized,
 {
-    write!(write, "{}{}", record.args(), line_ending)?;
+    write!(write, "{}", record.args())?;
     Ok(())
 }
 
@@ -290,4 +286,28 @@ pub fn should_skip(config: &Config, record: &Record<'_>) -> bool {
     }
 
     false
+}
+
+#[cfg(feature = "kv")]
+pub struct KvPrinter<'a, W>
+where
+    W: Write + Sized,
+{
+    pub write: &'a mut W,
+}
+
+#[cfg(feature = "kv")]
+impl<'kv, W> log::kv::VisitSource<'kv> for KvPrinter<'kv, W>
+where
+    W: Write + Sized,
+{
+    fn visit_pair(
+        &mut self,
+        key: log::kv::Key<'kv>,
+        value: log::kv::Value<'kv>,
+    ) -> Result<(), log::kv::Error> {
+        write!(self.write, " {key}={value:?}")?;
+
+        Ok(())
+    }
 }

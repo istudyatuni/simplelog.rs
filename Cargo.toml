@@ -22,6 +22,8 @@ include = [
 test = []
 default = ["termcolor", "local-offset"]
 local-offset = ["time/local-offset"]
+# requires log >= 0.4.21
+kv = ["log/kv"]
 
 [dependencies]
 log = { version = "0.4.*", features = ["std"] }
